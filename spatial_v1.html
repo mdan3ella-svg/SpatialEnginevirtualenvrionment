@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Digital Doodles | Spatial Engine 1.0 Pro</title>
+    
+    <!-- Core Engine Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+    
+    <!-- UI Framework -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #0a0c10; 
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+        }
+
+        .viewport-canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+        .tool-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            background: rgba(255,255,255,0.03);
+            color: #94a3b8;
+            cursor: pointer;
+        }
+        .tool-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: white;
+        }
+        .tool-btn.active {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .inspector-input {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Layout -->
+    <div class="flex h-screen w-screen relative overflow-hidden">
+        
+        <!-- Sidebar -->
+        <aside class="w-16 flex flex-col items-center py-6 gap-4 border-r border-white/5 bg-[#0a0c10] z-30">
+            <div class="mb-4 group cursor-pointer">
+                <svg viewBox="0 0 100 100" class="w-10 h-10 drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]">
+                    <defs>
+                        <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#3b82f6" />
+                            <stop offset="100%" stopColor="#8b5cf6" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M20,30 Q50,10 80,30 Q90,60 50,90 Q10,60 20,30" fill="none" stroke="url(#brandGrad)" stroke-width="8" stroke-linecap="round" />
+                    <circle cx="50" cy="45" r="12" fill="url(#brandGrad)" />
+                </svg>
+            </div>
+            
+            <button onclick="setMode('translate')" class="tool-btn active" id="btn-translate" title="Translate (G)">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14M9 8l3-3 3 3M9 16l3 3 3-3"/></svg>
+            </button>
+            <button onclick="setMode('rotate')" class="tool-btn" id="btn-rotate" title="Rotate (R)">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+            <button onclick="setMode('scale')" class="tool-btn" id="btn-scale" title="Scale (S)">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </button>
+            
+            <div class="w-8 h-px bg-white/5 my-2"></div>
+            
+            <button onclick="document.getElementById('file-upload').click()" class="tool-btn text-green-400" title="Import GLB/GLTF">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v8"/></svg>
+            </button>
+            <input type="file" id="file-upload" class="hidden" accept=".glb,.gltf" onchange="importFile(event)">
+
+            <button onclick="deleteSelected()" class="tool-btn mt-auto text-red-500 hover:bg-red-500/10" title="Delete (Del)">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+        </aside>
+
+        <!-- Viewport -->
+        <main class="flex-1 relative">
+            <header class="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-8 bg-gradient-to-b from-[#0a0c10] to-transparent z-20">
+                <div class="flex items-center gap-6">
+                    <div class="flex flex-col">
+                        <h1 class="font-black tracking-tighter text-lg italic uppercase leading-none">
+                            Spatial Engine<span class="text-blue-500">_</span>
+                        </h1>
+                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1 ml-0.5">Digital Doodles Core</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="addPrimitive('box')" class="bg-white/5 border border-white/10 hover:bg-white/10 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors">Add Box</button>
+                    <button onclick="addPrimitive('sphere')" class="bg-white/5 border border-white/10 hover:bg-white/10 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors">Add Sphere</button>
+                    <button onclick="addPrimitive('torus')" class="bg-white/5 border border-white/10 hover:bg-white/10 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-colors">Add Torus</button>
+                    <div class="w-px h-6 bg-white/10 mx-2"></div>
+                    <button onclick="exportScene()" class="bg-white text-black px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2">
+                        Build Release
+                    </button>
+                </div>
+            </header>
+
+            <div id="container" class="viewport-canvas"></div>
+        </main>
+
+        <!-- Inspector / Outliner -->
+        <aside class="w-80 border-l border-white/10 bg-[#11141b]/95 backdrop-blur-xl flex flex-col z-30">
+            <!-- Tabs -->
+            <div class="flex border-b border-white/5">
+                <button class="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-blue-500 border-b-2 border-blue-500">Inspector</button>
+                <button class="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">History</button>
+            </div>
+
+            <div class="p-6 flex-1 overflow-y-auto">
+                <!-- Transform Section -->
+                <div id="inspector-content" class="space-y-6 hidden">
+                    <section>
+                        <h3 class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Transform</h3>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[8px] text-slate-500 font-bold">POS X</label>
+                                <input type="number" id="prop-px" step="0.1" class="inspector-input" oninput="updateSelectedFromUI()">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[8px] text-slate-500 font-bold">POS Y</label>
+                                <input type="number" id="prop-py" step="0.1" class="inspector-input" oninput="updateSelectedFromUI()">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[8px] text-slate-500 font-bold">POS Z</label>
+                                <input type="number" id="prop-pz" step="0.1" class="inspector-input" oninput="updateSelectedFromUI()">
+                            </div>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h3 class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Material</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[9px] text-slate-400 font-bold">Base Color</label>
+                                <input type="color" id="prop-color" class="w-8 h-8 rounded bg-transparent border-none cursor-pointer" oninput="updateSelectedFromUI()">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] text-slate-400 font-bold">Metalness</label>
+                                <input type="range" id="prop-metal" min="0" max="1" step="0.01" class="w-full accent-blue-500" oninput="updateSelectedFromUI()">
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div id="inspector-empty" class="h-full flex flex-col items-center justify-center text-center px-4">
+                    <div class="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center mb-4">
+                        <svg width="20" height="20" fill="none" stroke="#334155" stroke-width="2" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </div>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select an object to inspect</p>
+                </div>
+
+                <!-- Scene List -->
+                <div class="mt-8 border-t border-white/5 pt-8">
+                    <h3 class="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Scene Graph</h3>
+                    <div id="outliner" class="space-y-1"></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="notif-container" class="fixed top-20 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-[100] pointer-events-none"></div>
+
+    <script>
+        let scene, camera, renderer, controls, transformControls;
+        let objects = [];
+        let selectedId = null;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0c10);
+            
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(12, 10, 12);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            transformControls = new THREE.TransformControls(camera, renderer.domElement);
+            transformControls.addEventListener('dragging-changed', (e) => controls.enabled = !e.value);
+            transformControls.addEventListener('change', updateUIFromSelected);
+            scene.add(transformControls);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+            sun.position.set(10, 20, 10);
+            sun.castShadow = true;
+            scene.add(sun);
+
+            const grid = new THREE.GridHelper(40, 40, 0x1e293b, 0x0f172a);
+            scene.add(grid);
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+            
+            notify("Engine Online");
+            animate();
+        }
+
+        function addPrimitive(type) {
+            let geometry;
+            if (type === 'box') geometry = new THREE.BoxGeometry(2, 2, 2);
+            else if (type === 'sphere') geometry = new THREE.SphereGeometry(1.5, 32, 32);
+            else if (type === 'torus') geometry = new THREE.TorusKnotGeometry(1.5, 0.5, 100, 16);
+
+            const material = new THREE.MeshPhysicalMaterial({
+                color: 0x3b82f6,
+                metalness: 0.5,
+                roughness: 0.2
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.position.y = 1;
+            
+            const id = 'obj_' + Math.random().toString(36).substr(2, 9);
+            objects.push({ id, mesh, name: type.charAt(0).toUpperCase() + type.slice(1) });
+            scene.add(mesh);
+            selectObject(id);
+            updateOutliner();
+            notify(`${type.toUpperCase()} Added`);
+        }
+
+        function importFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const loader = new THREE.GLTFLoader();
+            const url = URL.createObjectURL(file);
+            
+            loader.load(url, (gltf) => {
+                const model = gltf.scene;
+                const id = 'imp_' + Math.random().toString(36).substr(2, 9);
+                objects.push({ id, mesh: model, name: file.name.split('.')[0] });
+                scene.add(model);
+                selectObject(id);
+                updateOutliner();
+                notify("Asset Imported");
+            }, undefined, (error) => {
+                notify("Import Failed");
+                console.error(error);
+            });
+        }
+
+        function selectObject(id) {
+            selectedId = id;
+            const entry = objects.find(o => o.id === id);
+            
+            const inspector = document.getElementById('inspector-content');
+            const emptyState = document.getElementById('inspector-empty');
+
+            if (entry) {
+                transformControls.attach(entry.mesh);
+                inspector.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                updateUIFromSelected();
+            } else {
+                transformControls.detach();
+                inspector.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+            }
+            updateOutliner();
+        }
+
+        function updateUIFromSelected() {
+            const entry = objects.find(o => o.id === selectedId);
+            if (!entry) return;
+            
+            const mesh = entry.mesh;
+            document.getElementById('prop-px').value = mesh.position.x.toFixed(2);
+            document.getElementById('prop-py').value = mesh.position.y.toFixed(2);
+            document.getElementById('prop-pz').value = mesh.position.z.toFixed(2);
+            
+            if (mesh.material) {
+                document.getElementById('prop-color').value = '#' + mesh.material.color.getHexString();
+                document.getElementById('prop-metal').value = mesh.material.metalness || 0;
+            }
+        }
+
+        function updateSelectedFromUI() {
+            const entry = objects.find(o => o.id === selectedId);
+            if (!entry) return;
+
+            const mesh = entry.mesh;
+            mesh.position.set(
+                parseFloat(document.getElementById('prop-px').value),
+                parseFloat(document.getElementById('prop-py').value),
+                parseFloat(document.getElementById('prop-pz').value)
+            );
+
+            if (mesh.material) {
+                mesh.material.color.set(document.getElementById('prop-color').value);
+                mesh.material.metalness = parseFloat(document.getElementById('prop-metal').value);
+            }
+        }
+
+        function deleteSelected() {
+            const idx = objects.findIndex(o => o.id === selectedId);
+            if (idx !== -1) {
+                scene.remove(objects[idx].mesh);
+                objects.splice(idx, 1);
+                selectObject(null);
+                updateOutliner();
+                notify("Deleted");
+            }
+        }
+
+        function setMode(mode) {
+            transformControls.setMode(mode);
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+        }
+
+        function updateOutliner() {
+            const outliner = document.getElementById('outliner');
+            outliner.innerHTML = '';
+            objects.forEach(obj => {
+                const div = document.createElement('div');
+                div.className = `px-3 py-2 rounded text-[10px] font-bold cursor-pointer flex items-center gap-2 ${obj.id === selectedId ? 'bg-blue-600/20 text-blue-400' : 'text-slate-500 hover:bg-white/5'}`;
+                div.onclick = () => selectObject(obj.id);
+                div.innerText = obj.name;
+                outliner.appendChild(div);
+            });
+        }
+
+        function exportScene() {
+            const exporter = new THREE.GLTFExporter();
+            exporter.parse(scene, (result) => {
+                const blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'Spatial_Export.gltf';
+                link.click();
+                notify("Export Ready");
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onKeyDown(e) {
+            if (e.key === 'g') setMode('translate');
+            if (e.key === 'r') setMode('rotate');
+            if (e.key === 's') setMode('scale');
+            if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+        }
+
+        function notify(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'bg-[#1b1f27] border border-white/10 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-3';
+            toast.innerHTML = `<div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>${msg}`;
+            document.getElementById('notif-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
